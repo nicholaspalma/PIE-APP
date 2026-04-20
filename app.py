@@ -11,12 +11,10 @@ api_key_configurada = st.secrets.get("GEMINI_API_KEY", None)
 
 # --- FUNCIONES ---
 def leer_docx(archivo):
-    """Lee el contenido de un archivo Word."""
     doc = docx.Document(archivo)
     return "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
 
 def crear_docx_adaptado(texto_adaptado):
-    """Crea un nuevo archivo Word con el texto procesado."""
     doc = docx.Document()
     for linea in texto_adaptado.split('\n'):
         if linea.strip(): 
@@ -28,11 +26,10 @@ def crear_docx_adaptado(texto_adaptado):
     return archivo_memoria
 
 def adaptar_prueba_con_ia(texto_original, curso, asignatura, necesidad, api_key):
-    """Conecta con Google Gemini para adaptar el contenido."""
     genai.configure(api_key=api_key)
     
-    # SOLUCIÓN DEL ERROR: Usamos gemini-1.0-pro que es 100% compatible
-    modelo = genai.GenerativeModel('gemini-1.0-pro')
+    # Usamos el modelo más rápido y moderno de Google
+    modelo = genai.GenerativeModel('gemini-1.5-flash')
     
     instrucciones = {
         "TDAH": "Acorta oraciones, usa viñetas, resalta verbos de acción y elimina distractores.",
@@ -40,14 +37,19 @@ def adaptar_prueba_con_ia(texto_original, curso, asignatura, necesidad, api_key)
         "Trastorno del Lenguaje": "Usa vocabulario simple, frases cortas y estructuras gramaticales sencillas."
     }
     
+    # --- AQUÍ ESTÁ TU SÚPER PROMPT ---
     prompt = f"""
-    Eres un experto en Educación Diferencial y adecuaciones PACI en Chile.
-    Tu tarea es adaptar la siguiente prueba de {asignatura} para un nivel de {curso}.
-    El estudiante presenta {necesidad}, por lo que debes aplicar estos criterios: {instrucciones[necesidad]}
+    Actúa como una Educadora Diferencial altamente capacitada, con más de 20 años de experiencia trabajando en el Programa de Integración Escolar (PIE) en Chile.
     
-    Mantén el contenido pedagógico pero ajusta la forma y complejidad del lenguaje según el nivel.
+    Tu tarea es ejecutar una adecuación curricular de la siguiente prueba de {asignatura} para un estudiante de {curso}. 
+    El estudiante presenta la siguiente condición: {necesidad}.
     
-    TEXTO DE LA PRUEBA A ADAPTAR:
+    Basado en tu vasta experiencia, debes aplicar rigurosamente estos criterios técnicos en tu adaptación: {instrucciones[necesidad]}.
+    
+    Toma el texto original de la prueba y reescríbelo completo. Adapta el formato, las instrucciones y la complejidad del lenguaje para que el estudiante pueda rendirla de forma autónoma con éxito, pero manteniendo intacto el Objetivo de Aprendizaje (OA). 
+    Entrega solamente la prueba lista para imprimir, sin saludos ni explicaciones extra.
+    
+    TEXTO ORIGINAL DE LA PRUEBA:
     {texto_original}
     """
     
@@ -83,7 +85,7 @@ if archivo_subido:
             st.error("Error: No hay una API Key configurada. Revisa los Secrets de Streamlit.")
         else:
             try:
-                with st.spinner("La IA está analizando y adaptando la prueba..."):
+                with st.spinner("La educadora virtual está analizando y adaptando la prueba..."):
                     texto_original = leer_docx(archivo_subido)
                     texto_paci = adaptar_prueba_con_ia(texto_original, curso_sel, asignatura_sel, necesidad_sel, final_api_key)
                     archivo_descarga = crear_docx_adaptado(texto_paci)
