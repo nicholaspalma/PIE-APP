@@ -7,7 +7,6 @@ from io import BytesIO
 st.set_page_config(page_title="Adecuaciones PACI", page_icon="📘", layout="centered")
 
 # --- LÓGICA DE LA API KEY (SECRETS) ---
-# Esta parte busca la clave que pegaste en la configuración de Streamlit
 api_key_configurada = st.secrets.get("GEMINI_API_KEY", None)
 
 # --- FUNCIONES ---
@@ -21,7 +20,6 @@ def crear_docx_adaptado(texto_adaptado):
     doc = docx.Document()
     for linea in texto_adaptado.split('\n'):
         if linea.strip(): 
-            # Limpiamos posibles asteriscos de formato que a veces pone la IA
             doc.add_paragraph(linea.replace('**', ''))
     
     archivo_memoria = BytesIO()
@@ -33,10 +31,9 @@ def adaptar_prueba_con_ia(texto_original, curso, asignatura, necesidad, api_key)
     """Conecta con Google Gemini para adaptar el contenido."""
     genai.configure(api_key=api_key)
     
-    # ACTUALIZACIÓN: Usamos el modelo gemini-1.5-flash
-    modelo = genai.GenerativeModel('gemini-1.5-flash')
+    # SOLUCIÓN DEL ERROR: Usamos gemini-1.0-pro que es 100% compatible
+    modelo = genai.GenerativeModel('gemini-1.0-pro')
     
-    # Instrucciones específicas según la necesidad del estudiante
     instrucciones = {
         "TDAH": "Acorta oraciones, usa viñetas, resalta verbos de acción y elimina distractores.",
         "TEA": "Usa lenguaje literal, instrucciones paso a paso y evita metáforas o lenguaje ambiguo.",
@@ -64,7 +61,6 @@ st.markdown("Sube una prueba en formato Word y la IA la adaptará automáticamen
 with st.sidebar:
     st.header("⚙️ Configuración")
     
-    # Verificamos si la clave está en Secrets
     if api_key_configurada:
         st.success("✅ IA conectada vía Secrets")
         final_api_key = api_key_configurada
@@ -88,18 +84,11 @@ if archivo_subido:
         else:
             try:
                 with st.spinner("La IA está analizando y adaptando la prueba..."):
-                    # 1. Leer el Word
                     texto_original = leer_docx(archivo_subido)
-                    
-                    # 2. Procesar con IA
                     texto_paci = adaptar_prueba_con_ia(texto_original, curso_sel, asignatura_sel, necesidad_sel, final_api_key)
-                    
-                    # 3. Crear el nuevo Word
                     archivo_descarga = crear_docx_adaptado(texto_paci)
                     
                     st.success("✨ ¡Adecuación lista!")
-                    
-                    # 4. Botón de descarga
                     st.download_button(
                         label="⬇️ Descargar Prueba Adaptada",
                         data=archivo_descarga,
@@ -107,7 +96,6 @@ if archivo_subido:
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
                     
-                    # Vista previa opcional
                     with st.expander("Ver vista previa del texto adaptado"):
                         st.write(texto_paci)
             
