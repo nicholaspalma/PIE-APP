@@ -26,43 +26,36 @@ def crear_docx_adaptado(texto_adaptado):
     return archivo_memoria
 
 def adaptar_prueba_con_ia(texto_original, curso, asignatura, necesidad, api_key):
+    # Configuración de la API
     genai.configure(api_key=api_key)
     
-    # --- EL TRUCO MAESTRO: Buscar modelo automáticamente ---
-    modelo_elegido = 'gemini-1.5-flash' # Modelo por defecto
-    try:
-        # Preguntamos a Google qué modelos existen para esta cuenta
-        modelos = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        
-        # Filtramos para usar el mejor disponible (Flash o Pro)
-        for m in modelos:
-            if '1.5-flash' in m:
-                modelo_elegido = m
-                break
-            elif 'pro' in m:
-                modelo_elegido = m
-    except Exception:
-        pass # Si falla la búsqueda, intenta con el por defecto
-        
-    modelo = genai.GenerativeModel(modelo_elegido)
+    # SELECCIÓN DIRECTA DEL MODELO (Sin buscadores automáticos para evitar el error 400)
+    modelo = genai.GenerativeModel('gemini-1.5-flash')
     
-    instrucciones = {
+    # Criterios técnicos según el perfil
+    instrucciones_tecnicas = {
         "TDAH": "Acorta oraciones, usa viñetas, resalta verbos de acción y elimina distractores.",
         "TEA": "Usa lenguaje literal, instrucciones paso a paso y evita metáforas o lenguaje ambiguo.",
         "Trastorno del Lenguaje": "Usa vocabulario simple, frases cortas y estructuras gramaticales sencillas."
     }
     
-    # --- TU SÚPER PROMPT ---
+    # --- TU PROMPT DE EXPERTA ---
     prompt = f"""
     Actúa como una Educadora Diferencial altamente capacitada, con más de 20 años de experiencia trabajando en el Programa de Integración Escolar (PIE) en Chile.
     
     Tu tarea es ejecutar una adecuación curricular de la siguiente prueba de {asignatura} para un estudiante de {curso}. 
     El estudiante presenta la siguiente condición: {necesidad}.
     
-    Basado en tu vasta experiencia, debes aplicar rigurosamente estos criterios técnicos en tu adaptación: {instrucciones[necesidad]}.
+    Basado en tu vasta experiencia, debes aplicar rigurosamente estos criterios técnicos en tu adaptación: {instrucciones_tecnicas[necesidad]}.
     
-    Toma el texto original de la prueba y reescríbelo completo. Adapta el formato, las instrucciones y la complejidad del lenguaje para que el estudiante pueda rendirla de forma autónoma con éxito, pero manteniendo intacto el Objetivo de Aprendizaje (OA). 
-    Entrega solamente la prueba lista para imprimir, sin saludos ni explicaciones extra.
+    Toma el texto original de la prueba y reescríbelo completo. Tu objetivo es graduar la complejidad  para que el estudiante pueda rendirla de forma autónoma con éxito, pero manteniendo intacto el Objetivo de Aprendizaje (OA). 
+    
+    Entrega solamente la prueba lista para imprimir, siguiendo estas directrices de acceso:
+    - Uso de lenguaje claro y sencillo[cite: 13].
+    - Priorizar preguntas directas y de respuesta corta[cite: 13].
+    - Fragmentar las actividades en pasos simples.
+    
+    No incluyas saludos ni comentarios, solo el contenido de la prueba adaptada.
     
     TEXTO ORIGINAL DE LA PRUEBA:
     {texto_original}
@@ -73,7 +66,7 @@ def adaptar_prueba_con_ia(texto_original, curso, asignatura, necesidad, api_key)
 
 # --- INTERFAZ DE USUARIO ---
 st.title("📘 Generador PACI Profesional")
-st.markdown("Sube una prueba en formato Word y la IA la adaptará automáticamente según el perfil del estudiante.")
+st.markdown("Sube una prueba en formato Word y nuestra Educadora Virtual la adaptará siguiendo el PACI del estudiante.")
 
 with st.sidebar:
     st.header("⚙️ Configuración")
@@ -82,7 +75,7 @@ with st.sidebar:
         st.success("✅ IA conectada vía Secrets")
         final_api_key = api_key_configurada
     else:
-        st.warning("⚠️ Clave no detectada en Secrets")
+        st.warning("⚠️ Clave no detectada")
         final_api_key = st.text_input("Ingresa API Key manualmente:", type="password")
     
     st.divider()
@@ -97,10 +90,10 @@ archivo_subido = st.file_uploader("Sube la prueba original (.docx)", type=["docx
 if archivo_subido:
     if st.button("🚀 Generar Adecuación"):
         if not final_api_key:
-            st.error("Error: No hay una API Key configurada. Revisa los Secrets de Streamlit.")
+            st.error("Falta la API Key en los Secrets de Streamlit.")
         else:
             try:
-                with st.spinner("La educadora virtual está analizando y adaptando la prueba..."):
+                with st.spinner("La educadora virtual está aplicando las adecuaciones..."):
                     texto_original = leer_docx(archivo_subido)
                     texto_paci = adaptar_prueba_con_ia(texto_original, curso_sel, asignatura_sel, necesidad_sel, final_api_key)
                     archivo_descarga = crear_docx_adaptado(texto_paci)
@@ -109,12 +102,12 @@ if archivo_subido:
                     st.download_button(
                         label="⬇️ Descargar Prueba Adaptada",
                         data=archivo_descarga,
-                        file_name=f"Prueba_{asignatura_sel}_{curso_sel}_PACI.docx",
+                        file_name=f"PACI_{asignatura_sel}_{necesidad_sel}.docx",
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
                     
-                    with st.expander("Ver vista previa del texto adaptado"):
+                    with st.expander("Ver vista previa"):
                         st.write(texto_paci)
             
             except Exception as e:
-                st.error(f"Hubo un error técnico: {e}")
+                st.error(f"Error técnico: {e}")
