@@ -28,8 +28,23 @@ def crear_docx_adaptado(texto_adaptado):
 def adaptar_prueba_con_ia(texto_original, curso, asignatura, necesidad, api_key):
     genai.configure(api_key=api_key)
     
-    # Usamos el modelo más rápido y moderno de Google
-    modelo = genai.GenerativeModel('gemini-1.5-flash')
+    # --- EL TRUCO MAESTRO: Buscar modelo automáticamente ---
+    modelo_elegido = 'gemini-1.5-flash' # Modelo por defecto
+    try:
+        # Preguntamos a Google qué modelos existen para esta cuenta
+        modelos = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # Filtramos para usar el mejor disponible (Flash o Pro)
+        for m in modelos:
+            if '1.5-flash' in m:
+                modelo_elegido = m
+                break
+            elif 'pro' in m:
+                modelo_elegido = m
+    except Exception:
+        pass # Si falla la búsqueda, intenta con el por defecto
+        
+    modelo = genai.GenerativeModel(modelo_elegido)
     
     instrucciones = {
         "TDAH": "Acorta oraciones, usa viñetas, resalta verbos de acción y elimina distractores.",
@@ -37,7 +52,7 @@ def adaptar_prueba_con_ia(texto_original, curso, asignatura, necesidad, api_key)
         "Trastorno del Lenguaje": "Usa vocabulario simple, frases cortas y estructuras gramaticales sencillas."
     }
     
-    # --- AQUÍ ESTÁ TU SÚPER PROMPT ---
+    # --- TU SÚPER PROMPT ---
     prompt = f"""
     Actúa como una Educadora Diferencial altamente capacitada, con más de 20 años de experiencia trabajando en el Programa de Integración Escolar (PIE) en Chile.
     
