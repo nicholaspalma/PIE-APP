@@ -21,51 +21,53 @@ def crear_docx_adaptado(texto_adaptado):
         doc = docx.Document()
 
     lineas = texto_adaptado.split('\n')
-    # La primera línea que no esté vacía será el título
-    titulo_ia = next((l.replace('#', '').strip() for l in lineas if l.strip()), "Prueba Adecuada")
+    
+    # Extraer el título de forma segura
+    titulo_ia = "Prueba Adecuada"
+    for linea in lineas:
+        if linea.strip():
+            titulo_ia = linea.replace('#', '').strip()
+            break
+
     cuerpo_prueba = lineas
 
-    # 1. REEMPLAZO DE {titulo} EN LA PLANTILLA
+    # REEMPLAZO DE TÍTULO EN LA PLANTILLA
     for p in doc.paragraphs:
         if "{titulo}" in p.text:
             p.text = p.text.replace("{titulo}", titulo_ia)
             for run in p.runs:
                 run.bold = True
 
-    # 2. PROCESAMIENTO DEL CUERPO
+    # PROCESAMIENTO DEL CUERPO
     letra_opcion = 0
     abc = ["a)", "b)", "c)", "d)", "e)"]
-    dibujo_listo = False 
 
     for linea in cuerpo_prueba:
-        # Limpieza profunda de símbolos
+        # Limpieza de símbolos
         linea_limpia = linea.replace('---', '').replace('**', '').replace('\\_', '').replace('____', '______').strip()
         
         if linea_limpia:
-            # Lógica para alternativas (convertir * o - en letras a, b, c)
+            # Formatear alternativas a, b, c
             if linea_limpia.startswith(('*', '-', '•')):
                 texto_final = f"{abc[letra_opcion % 5]} {linea_limpia[1:].strip()}"
                 letra_opcion += 1
             else:
                 texto_final = linea_limpia
                 if not any(texto_final.startswith(x) for x in abc):
-                    letra_opcion = 0 # Reinicia letras si no es una alternativa
+                    letra_opcion = 0
 
             p = doc.add_paragraph(texto_final)
-            
-            # Espaciado entre preguntas [cite: 228-232]
             p.paragraph_format.space_after = Pt(8)
 
             # Formato de Títulos de Sección
-            if any(x in texto_final.upper() for x in ["PARTE", "INSTRUCCIÓN"]):
+            if any(x in texto_final.upper() for x in ["PARTE", "INSTRUCCIÓN", "INSTRUCCIONES"]):
                 p.runs[0].bold = True
                 p.paragraph_format.space_before = Pt(14)
             
-            # ESPACIO PARA DIBUJAR (Solo una vez y tamaño controlado) 
-            if ("DIBUJA" in texto_final.upper() or "DIBUJO" in texto_final.upper()) and not dibujo_listo:
+            # ESPACIO PARA DIBUJAR (5 líneas)
+            if "DIBUJA" in texto_final.upper() or "DIBUJO" in texto_final.upper():
                 for _ in range(5): 
                     doc.add_paragraph("")
-                dibujo_listo = True 
     
     archivo_memoria = BytesIO()
     doc.save(archivo_memoria)
@@ -75,25 +77,31 @@ def crear_docx_adaptado(texto_adaptado):
 def adaptar_prueba_con_ia(texto_original, curso, asignatura, necesidad, api_key):
     genai.configure(api_key=api_key)
     
-    # Intentamos usar el modelo Flash (el más rápido) con un nombre alternativo si falla
-    try:
-        modelo = genai.GenerativeModel('gemini-1.5-flash-latest')
-    except:
-        modelo = genai.GenerativeModel('gemini-1.5-flash')
+    # SOLUCIÓN DEL ERROR: Usar el modelo 'gemini-pro'
+    modelo = genai.GenerativeModel('gemini-pro')
+    
+    instrucciones_tecnicas = {
+        "TDAH": "Acorta oraciones, usa viñetas, resalta verbos de acción y elimina distractores.",
+        "TEA": "Usa lenguaje literal, instrucciones paso a paso y evita metáforas o lenguaje ambiguo. MANTÉN la sección de dibujo.",
+        "Trastorno del Lenguaje": "Usa vocabulario simple, frases cortas y estructuras gramaticales sencillas."
+    }
     
     prompt = f"""
-    Eres una Educadora Diferencial con 20 años de experiencia en Chile. 
-    ADAPTA esta prueba de {asignatura} para {curso} (Necesidad: {necesidad}).
-
-    INSTRUCCIONES TÉCNICAS:
-    1. Comienza con el título de la prueba.
+    Actúa como una Educadora Diferencial con 20 años de experiencia en el Programa de Integración Escolar (PIE) en Chile, experta en el Decreto 83.
+    
+    Realiza una adaptación curricular de la siguiente prueba de {asignatura} para un estudiante de {curso} con {necesidad}.
+    
+    Aplica rigurosamente estos criterios:
+    {instrucciones_tecnicas[necesidad]}
+    
+    REGLAS ESTRICTAS DE FORMATO:
+    1. La primera línea DEBE ser el título de la prueba.
     2. Usa viñetas (*) para las alternativas de selección múltiple.
-    3. Para Verdadero o Falso usa este formato: ______ (línea de 6 guiones).
-    4. MANTÉN la sección de dibujo al final con una instrucción clara.
-    5. No incluyas saludos ni explicaciones de lo que vas a hacer.
-    6. No dupliques el encabezado de nombre/curso.
-
-    TEXTO A ADAPTAR:
+    3. Para Verdadero o Falso usa exactamente este formato: ______ (guiones bajos).
+    4. NO incluyas saludos, despedidas, ni explicaciones sobre lo que hiciste.
+    5. NO incluyas encabezados para nombre, fecha o curso.
+    
+    TEXTO ORIGINAL DE LA PRUEBA:
     {texto_original}
     """
     
@@ -108,20 +116,23 @@ with st.sidebar:
     final_api_key = api_key_configurada if api_key_configurada else st.text_input("API Key:", type="password")
     
     st.divider()
-    # Volvemos a poner la Asignatura
+    curso_sel = st.selectbox("Curso:", ["1ro Básico", "2do Básico", "3ro Básico", "4to Básico", "5to Básico", "6to Básico", "7mo Básico", "8vo Básico", "1ro Medio", "2do Medio", "3ro Medio", "4to Medio"])
     asignatura_sel = st.selectbox("Asignatura:", ["Lenguaje", "Matemáticas", "Historia", "Ciencias", "Inglés"])
-    curso_sel = st.selectbox("Curso:", ["1ro Básico", "2do Básico", "3ro Básico", "4to Básico", "5to Básico", "6to Básico", "7mo Básico", "8vo Básico"])
     necesidad_sel = st.selectbox("Necesidad (PIE):", ["TEA", "TDAH", "Trastorno del Lenguaje"])
 
 archivo = st.file_uploader("Sube la prueba original (.docx)", type=["docx"])
 
 if archivo and st.button("🚀 Generar Word Profesional"):
-    if final_api_key:
-        with st.spinner("La educadora virtual está trabajando rápidamente..."):
-            try:
+    if not final_api_key:
+        st.error("Falta la API Key en los Secrets de Streamlit.")
+    else:
+        try:
+            with st.spinner("La educadora virtual está trabajando en la adaptación..."):
                 texto_paci = adaptar_prueba_con_ia(leer_docx(archivo), curso_sel, asignatura_sel, necesidad_sel, final_api_key)
                 archivo_word = crear_docx_adaptado(texto_paci)
                 st.success("✨ ¡Adecuación lista!")
                 st.download_button("⬇️ Descargar", data=archivo_word, file_name=f"PACI_{curso_sel}.docx")
-            except Exception as e:
-                st.error(f"Error: {e}")
+                with st.expander("Ver vista previa"):
+                    st.write(texto_paci)
+        except Exception as e:
+            st.error(f"Error técnico: {e}")
