@@ -22,12 +22,12 @@ def crear_docx_adaptado(texto_adaptado):
     archivo_memoria.seek(0)
     return archivo_memoria
 
-def adaptar_prueba_con_ia(texto_original, curso, asignatura, necesidad, api_key):
+def adaptar_prueba_con_ia(texto_original, curso, asignatura, necesidad, api_key, nombre_modelo):
     genai.configure(api_key=api_key)
-    # Modelo 1.5 Flash: El más rápido y capaz para textos educativos
-    modelo = genai.GenerativeModel('gemini-1.5-flash')
     
-    # --- TU PROMPT PERSONALIZADO ---
+    # Usamos exactamente el modelo que seleccionaste en la pantalla
+    modelo = genai.GenerativeModel(nombre_modelo)
+    
     prompt = f"""
     Actúa como una Educadora Diferencial altamente capacitada, con más de 20 años de experiencia trabajando en el Programa de Integración Escolar (PIE) en Chile y experta en el Decreto 83.
     
@@ -51,16 +51,33 @@ def adaptar_prueba_con_ia(texto_original, curso, asignatura, necesidad, api_key)
 
 # --- INTERFAZ ---
 st.title("👩‍🏫 Generador PACI: Nivel Experto")
-st.markdown("Plataforma profesional para especialistas PIE.")
+st.markdown("Sube tu prueba y elige el cerebro de la IA.")
 
 with st.sidebar:
     st.header("⚙️ Configuración")
-    if api_key_configurada:
-        st.success("✅ IA Conectada")
-        final_api_key = api_key_configurada
-    else:
-        final_api_key = st.text_input("Ingresa API Key:", type="password")
     
+    # Validamos la API KEY primero
+    final_api_key = api_key_configurada if api_key_configurada else st.text_input("Ingresa API Key:", type="password")
+    modelo_seleccionado = None
+    
+    # Si hay clave, buscamos los modelos reales
+    if final_api_key:
+        st.success("✅ Llave Conectada")
+        try:
+            genai.configure(api_key=final_api_key)
+            # Le preguntamos a Google: "¿Qué modelos tienes para leer texto?"
+            lista_modelos = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            
+            # Limpiamos modelos que dan error (como los viejos de vision)
+            modelos_limpios = [m for m in lista_modelos if "vision" not in m]
+            
+            if modelos_limpios:
+                # Mostramos un menú desplegable para que tú elijas
+                modelo_seleccionado = st.selectbox("🧠 Elige el Cerebro IA:", modelos_limpios)
+        except Exception as e:
+            st.error("Error conectando con Google. Revisa tu API Key.")
+    
+    st.divider()
     curso_sel = st.selectbox("Curso:", ["1ro Básico", "2do Básico", "3ro Básico", "4to Básico", "5to Básico", "6to Básico", "7mo Básico", "8vo Básico", "1ro Medio", "2do Medio", "3ro Medio", "4to Medio"])
     asignatura_sel = st.selectbox("Asignatura:", ["Lenguaje", "Matemáticas", "Historia", "Ciencias", "Inglés"])
     necesidad_sel = st.selectbox("Necesidad:", ["TEA", "TDAH", "Trastorno del Lenguaje"])
@@ -68,11 +85,14 @@ with st.sidebar:
 archivo = st.file_uploader("Sube la prueba (.docx)", type=["docx"])
 
 if archivo and st.button("🚀 Ejecutar Adecuación Experta"):
-    try:
-        with st.spinner("La educadora virtual está adaptando el material..."):
-            texto_paci = adaptar_prueba_con_ia(leer_docx(archivo), curso_sel, asignatura_sel, necesidad_sel, final_api_key)
-            st.success("✨ ¡Adecuación lista!")
-            st.download_button("⬇️ Descargar Word", data=crear_docx_adaptado(texto_paci), file_name=f"PACI_{asignatura_sel}.docx")
-            with st.expander("Ver vista previa"): st.write(texto_paci)
-    except Exception as e:
-        st.error(f"Error técnico: {e}")
+    if not final_api_key or not modelo_seleccionado:
+        st.error("Falta la API Key o seleccionar el modelo.")
+    else:
+        try:
+            with st.spinner(f"La educadora virtual está procesando con {modelo_seleccionado}..."):
+                texto_paci = adaptar_prueba_con_ia(leer_docx(archivo), curso_sel, asignatura_sel, necesidad_sel, final_api_key, modelo_seleccionado)
+                st.success("✨ ¡Adecuación lista!")
+                st.download_button("⬇️ Descargar Word", data=crear_docx_adaptado(texto_paci), file_name=f"PACI_{asignatura_sel}.docx")
+                with st.expander("Ver vista previa"): st.write(texto_paci)
+        except Exception as e:
+            st.error(f"Error técnico al procesar: {e}")
