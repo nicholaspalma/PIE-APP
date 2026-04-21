@@ -16,31 +16,30 @@ def leer_docx(archivo):
     return "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
 
 def crear_docx_adaptado(texto_adaptado):
-    # Intentamos abrir la plantilla con logos, si no existe, creamos uno blanco
+    # Abrimos la plantilla (con tus logos)
     if os.path.exists("plantilla.docx"):
         doc = docx.Document("plantilla.docx")
-        # Añadimos un salto de página después del encabezado de la plantilla
-        doc.add_page_break()
     else:
         doc = docx.Document()
 
-    # Estilo para el título de la prueba
-    titulo = doc.add_paragraph("EVALUACIÓN ADECUADA (PACI)")
-    titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = titulo.runs[0]
-    run.bold = True
-    run.font.size = Pt(14)
+    # Añadimos un poco de espacio después del encabezado de la plantilla
+    doc.add_paragraph("\n")
 
-    # Procesamos el texto de la IA para aplicar formato básico
+    # Procesamos el texto para limpiar símbolos extraños de la IA
     for linea in texto_adaptado.split('\n'):
-        if linea.strip():
+        # Saltamos líneas que son solo guiones o decoraciones de la IA
+        linea_limpia = linea.replace('---', '').replace('***', '').replace('**', '').strip()
+        
+        if linea_limpia:
             p = doc.add_paragraph()
-            # Si la línea parece un título (ej: Parte I, Instrucciones), la ponemos en negrita
-            if ":" in linea or linea.isupper() or "PARTE" in linea.upper():
-                run = p.add_run(linea.replace('**', ''))
+            # Si es un título de sección (ej: PARTE I) lo ponemos destacado
+            if "PARTE" in linea_limpia.upper() or "INSTRUCCIONES" in linea_limpia.upper():
+                run = p.add_run(linea_limpia)
                 run.bold = True
+                run.font.size = Pt(12)
+                p.alignment = WD_ALIGN_PARAGRAPH.LEFT
             else:
-                p.add_run(linea.replace('**', ''))
+                p.add_run(linea_limpia)
     
     archivo_memoria = BytesIO()
     doc.save(archivo_memoria)
@@ -51,19 +50,20 @@ def adaptar_prueba_con_ia(texto_original, curso, asignatura, necesidad, api_key,
     genai.configure(api_key=api_key)
     modelo = genai.GenerativeModel(nombre_modelo)
     
-    # PROMPT MEJORADO: Le pedimos a la IA que use una estructura clara
+    # PROMPT ULTRA-ESTRICTO: Eliminamos la "conversación" de la IA
     prompt = f"""
-    Actúa como una Educadora Diferencial con 20 años de experiencia en Chile. 
-    Tu misión es realizar la adecuación PACI de esta prueba de {asignatura} para {curso}.
-    Condición del estudiante: {necesidad}.
+    Eres una Educadora Diferencial con 20 años de experiencia. 
+    ADAPTA esta prueba de {asignatura} para {curso} (Necesidad: {necesidad}).
 
-    INSTRUCCIONES DE FORMATO PARA EL WORD:
-    1. Organiza la prueba en secciones claras (Ej: PARTE I: SELECCIÓN MÚLTIPLE).
-    2. Usa instrucciones cortas y numeradas.
-    3. Asegúrate de que el contenido sea estéticamente ordenado.
-    4. No incluyas comentarios personales, solo la prueba final.
+    REGLAS CRÍTICAS DE SALIDA:
+    1. PROHIBIDO saludar, presentarte o dar explicaciones. 
+    2. Comienza DIRECTAMENTE con el nombre de la prueba.
+    3. NO incluyas campos de "Nombre", "Fecha" o "Curso" (ya están en la plantilla).
+    4. NO uses tablas de texto (símbolos |). Usa listas simples.
+    5. NO uses líneas de guiones (---).
+    6. Usa instrucciones claras y segmentadas para el estudiante.
 
-    PRUEBA ORIGINAL:
+    TEXTO ORIGINAL A ADAPTAR:
     {texto_original}
     """
     
@@ -71,8 +71,7 @@ def adaptar_prueba_con_ia(texto_original, curso, asignatura, necesidad, api_key,
     return response.text
 
 # --- INTERFAZ ---
-st.title("👩‍🏫 Generador PACI: Formato Profesional")
-st.info("Nota: Para mantener los logos, asegúrate de haber subido 'plantilla.docx' a tu GitHub.")
+st.title("👩‍🏫 Generador PACI Profesional")
 
 with st.sidebar:
     st.header("⚙️ Configuración")
@@ -97,11 +96,11 @@ archivo = st.file_uploader("Sube la prueba original (.docx)", type=["docx"])
 
 if archivo and st.button("🚀 Generar Word Profesional"):
     if final_api_key and modelo_seleccionado:
-        with st.spinner("La experta está redactando y formateando la prueba..."):
+        with st.spinner("Generando adecuación limpia..."):
             try:
                 texto_paci = adaptar_prueba_con_ia(leer_docx(archivo), curso_sel, "Asignatura", necesidad_sel, final_api_key, modelo_seleccionado)
                 archivo_word = crear_docx_adaptado(texto_paci)
-                st.success("✨ ¡Documento generado!")
-                st.download_button("⬇️ Descargar Word con Formato", data=archivo_word, file_name=f"Prueba_PACI_{curso_sel}.docx")
+                st.success("✨ ¡Documento listo!")
+                st.download_button("⬇️ Descargar Word", data=archivo_word, file_name=f"Prueba_Adaptada.docx")
             except Exception as e:
                 st.error(f"Error: {e}")
