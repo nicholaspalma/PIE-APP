@@ -4,53 +4,69 @@ from docx.shared import Pt
 import google.generativeai as genai
 from io import BytesIO
 import os
-import base64  # Necesario para codificar la imagen de fondo
+import base64
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-# Usamos layout="wide" para un diseño más moderno y espacioso
 st.set_page_config(
-    page_title="PACI Experto Pro G3", 
+    page_title="PACI Pro: Nivel Gemini 3", 
     page_icon="👩‍🏫", 
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-# --- FUNCIÓN PARA APLICAR FONDO DE PANTALLA PERSONALIZADO ---
-# Streamlit requiere este truco de CSS para fondos de imagen locales
-def add_bg_from_local(image_file):
-    with open(image_file, "rb") as image_file:
-        encoded_string = base64.b64encode(image_file.read())
+# --- ESTILOS CSS PARA FONDO Y TARJETA CENTRAL ---
+def apply_custom_design(image_file):
+    with open(image_file, "rb") as f:
+        encoded_string = base64.b64encode(f.read()).decode()
+    
     st.markdown(
-    f"""
-    <style>
-    .stApp {{
-        background-image: url("data:image/png;base64,{encoded_string.decode()}");
-        background-size: cover;
-        background-position: center;
-        background-repeat: no-repeat;
-        background-attachment: fixed;
-    }}
-    
-    # .stApp > header {{
-    #     background-color: rgba(0,0,0,0);
-    # }}
-    
-    # .stApp > div:nth-child(1) {{
-    #     background-color: rgba(0,0,0,0);
-    # }}
-    </style>
-    """,
-    unsafe_allow_html=True
+        f"""
+        <style>
+        /* Fondo de pantalla */
+        .stApp {{
+            background-image: url("data:image/png;base64,{encoded_string}");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }}
+
+        /* Tarjeta central (Glassmorphism) */
+        .main-container {{
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            max-width: 900px;
+            margin: auto;
+            text-align: center;
+        }}
+
+        /* Ajustes de títulos */
+        h1 {{
+            color: #1E3A8A !important;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-weight: 700;
+        }}
+        
+        .stMarkdown {{
+            color: #334155;
+        }}
+
+        /* Ocultar barra lateral si está vacía */
+        [data-testid="stSidebar"] {{
+            display: none;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
     )
 
-# --- APLICAR EL FONDO ---
-# Asegúrate de que 'fondo.png' esté en la misma carpeta en GitHub
+# Aplicar diseño si existe la imagen
 if os.path.exists("fondo.png"):
-    add_bg_from_local('fondo.png')
-else:
-    st.warning("No se encontró el archivo 'fondo.png'. Por favor súbelo a GitHub para ver el fondo personalizado.")
+    apply_custom_design('fondo.png')
 
-
+# --- LÓGICA DE IA ---
 api_key_configurada = st.secrets.get("GEMINI_API_KEY", None)
 
 def leer_docx(archivo):
@@ -64,26 +80,20 @@ def crear_docx_adaptado(texto_adaptado):
         doc = docx.Document()
 
     lineas = [l.strip() for l in texto_adaptado.split('\n') if l.strip()]
-    
     titulo_ia = lineas[0].replace('#', '').strip() if lineas else "Evaluación Adecuada"
     cuerpo_crudo = lineas[1:] 
 
     for p in doc.paragraphs:
         if "{titulo}" in p.text:
             p.text = p.text.replace("{titulo}", titulo_ia)
-            for run in p.runs:
-                run.bold = True
+            for run in p.runs: run.bold = True
 
-    letra_opcion = 0
-    abc = ["a)", "b)", "c)", "d)", "e)"]
-    dibujo_listo = False 
-    palabras_prohibidas = ["NOMBRE", "CURSO", "FECHA", "APELLIDO", "RUT", "PUNTAJE"]
+    letra_opcion, abc, dibujo_listo = 0, ["a)", "b)", "c)", "d)", "e)"], False
+    prohibidas = ["NOMBRE", "CURSO", "FECHA", "APELLIDO", "RUT", "PUNTAJE"]
 
     for linea in cuerpo_crudo:
-        if any(p in linea.upper() for p in palabras_prohibidas) and len(linea) < 50:
-            continue
-
-        linea_limpia = linea.replace('|', '').replace('---', '').replace('**', '').replace('\\_', '').replace('____', '______').strip()
+        if any(p in linea.upper() for p in prohibidas) and len(linea) < 50: continue
+        linea_limpia = linea.replace('|', '').replace('---', '').replace('**', '').replace('\\_', '').strip()
         
         if linea_limpia:
             if linea_limpia.startswith(('*', '-', '•')):
@@ -91,87 +101,68 @@ def crear_docx_adaptado(texto_adaptado):
                 letra_opcion += 1
             else:
                 texto_final = linea_limpia
-                if not any(texto_final.startswith(x) for x in abc):
-                    letra_opcion = 0
+                if not any(texto_final.startswith(x) for x in abc): letra_opcion = 0
 
             p = doc.add_paragraph(texto_final)
             p.paragraph_format.space_after = Pt(12)
-
             if any(x in texto_final.upper() for x in ["PARTE", "INSTRUCCIÓN"]):
-                if p.runs:
-                    p.runs[0].bold = True
+                if p.runs: p.runs[0].bold = True
                 p.paragraph_format.space_before = Pt(18)
-            
             if ("DIBUJA" in texto_final.upper() or "DIBUJO" in texto_final.upper()) and not dibujo_listo:
-                for _ in range(10): 
-                    doc.add_paragraph("")
+                for _ in range(10): doc.add_paragraph("")
                 dibujo_listo = True 
     
-    archivo_memoria = BytesIO()
-    doc.save(archivo_memoria)
-    archivo_memoria.seek(0)
-    return archivo_memoria
+    buf = BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf
 
 def adaptar_prueba_con_ia(texto_original, curso, asignatura, necesidad, api_key):
     genai.configure(api_key=api_key)
     modelo = genai.GenerativeModel('gemini-3-flash-preview')
-    
-    prompt = f"""
-    Actúa como una Educadora Diferencial con 20 años de experiencia. 
-    ADAPTA esta prueba de {asignatura} para {curso} con {necesidad}.
+    prompt = f"Actúa como Educadora Diferencial experta. Adapta esta prueba de {asignatura} para {curso} con {necesidad}. Reglas: Primera línea título, viñetas * para alternativas, ______ para V/F, sin tablas, sin encabezados de datos personales. Texto: {texto_original}"
+    return modelo.generate_content(prompt).text
 
-    REGLAS DE ORO:
-    1. La primera línea DEBE ser el título.
-    2. Usa viñetas (*) para las alternativas.
-    3. Para Verdadero o Falso usa: ______
-    4. NO USES tablas ni el símbolo | (línea vertical).
-    5. NO incluyas encabezados de "Nombre", "Curso", etc. Salta directo a la prueba.
-    6. MANTÉN el espacio de dibujo con una instrucción clara.
-    7. Prohibido saludar o explicar lo que haces.
+# --- INTERFAZ CENTRALIZADA ---
+# Usamos un contenedor "div" de HTML para aplicar la tarjeta central
+st.markdown('<div class="main-container">', unsafe_allow_html=True)
 
-    TEXTO ORIGINAL:
-    {texto_original}
-    """
-    
-    response = modelo.generate_content(prompt)
-    return response.text
-
-# --- BARRA LATERAL (SIDEBAR) MODERNA ---
-with st.sidebar:
-    # --- AGREGAR LOGOS DE LA SIP ---
-    # Asumiendo que image_0.png y image_1.png están en tu repo de GitHub
-    if os.path.exists("image_0.png"):
-        st.image("image_0.png", use_column_width=True)
-    
-    st.header("⚙️ Configuración")
-    final_api_key = api_key_configurada if api_key_configurada else st.text_input("API Key:", type="password")
-    
-    st.divider()
-    asignatura_sel = st.selectbox("Asignatura:", ["Lenguaje", "Matemáticas", "Historia", "Ciencias", "Inglés"])
-    curso_sel = st.selectbox("Curso:", ["1ro Básico", "2do Básico", "3ro Básico", "4to Básico", "5to Básico", "6to Básico", "7mo Básico", "8vo Básico"])
-    necesidad_sel = st.selectbox("Necesidad (PIE):", ["TEA", "TDAH", "Trastorno del Lenguaje"])
-    
-    if os.path.exists("image_1.png"):
-        st.image("image_1.png", width=100) # Logo secundario más pequeño abajo
-
-# --- CONTENIDO PRINCIPAL ---
 st.title("👩‍🏫 PACI Pro: Nivel Gemini 3")
+st.write("Generador de adecuaciones curriculares con inteligencia artificial.")
+
+# SELECTORES EN COLUMNAS (Estilo buscador central)
+st.markdown("### 1. Configura la adecuación")
+c1, c2, c3 = st.columns(3)
+with c1:
+    asignatura_sel = st.selectbox("Asignatura:", ["Lenguaje", "Matemáticas", "Historia", "Ciencias", "Inglés"])
+with c2:
+    curso_sel = st.selectbox("Curso:", ["1ro Básico", "2do Básico", "3ro Básico", "4to Básico", "5to Básico", "6to Básico", "7mo Básico", "8vo Básico"])
+with c3:
+    necesidad_sel = st.selectbox("Necesidad (PIE):", ["TEA", "TDAH", "Trastorno del Lenguaje"])
+
 st.markdown("---")
 
-archivo = st.file_uploader("Sube la prueba original (.docx)", type=["docx"])
+# ÁREA DE CARGA (Grande y central)
+st.markdown("### 2. Sube tu archivo")
+archivo = st.file_uploader("Arrastra aquí tu prueba original (.docx)", type=["docx"])
 
-if archivo and st.button("🚀 Ejecutar Adecuación"):
+if not api_key_configurada:
+    final_api_key = st.text_input("Ingresa tu API Key para comenzar:", type="password")
+else:
+    final_api_key = api_key_configurada
+
+if archivo and st.button("🚀 Generar Adecuación Profesional", use_container_width=True):
     if not final_api_key:
-        st.error("Falta la API Key.")
+        st.error("Por favor ingresa la API Key.")
     else:
-        # Usamos st.columns para centrar el spinner y hacerlo ver más profesional
-        col1, col2, col3 = st.columns([1,2,1])
-        with col2:
-            with st.spinner("Gemini 3 está procesando la adecuación..."):
-                try:
-                    texto_paci = adaptar_prueba_con_ia(leer_docx(archivo), curso_sel, asignatura_sel, necesidad_sel, final_api_key)
-                    archivo_word = crear_docx_adaptado(texto_paci)
-                    st.success("✨ ¡Adecuación lista!")
-                    st.download_button("⬇️ Descargar Word", data=archivo_word, file_name=f"PACI_{curso_sel}.docx")
-                except Exception as e:
-                    st.error(f"Error técnico: {e}")
+        with st.spinner("Gemini 3 está procesando tu archivo..."):
+            try:
+                texto_paci = adaptar_prueba_con_ia(leer_docx(archivo), curso_sel, asignatura_sel, necesidad_sel, final_api_key)
+                archivo_word = crear_docx_adaptado(texto_paci)
+                st.balloons()
+                st.success("✨ ¡Adecuación generada con éxito!")
+                st.download_button("⬇️ Descargar Documento Adaptado", data=archivo_word, file_name=f"PACI_{asignatura_sel}_{curso_sel}.docx", use_container_width=True)
+            except Exception as e:
+                st.error(f"Error técnico: {e}")
+
+st.markdown('</div>', unsafe_allow_html=True)
