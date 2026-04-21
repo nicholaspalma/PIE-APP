@@ -1,12 +1,14 @@
 import streamlit as st
 import docx
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 import google.generativeai as genai
 from io import BytesIO
+import os
 
 # --- CONFIGURACIÓN ---
-st.set_page_config(page_title="PACI Experto", page_icon="👩‍🏫", layout="centered")
+st.set_page_config(page_title="PACI Experto Pro", page_icon="👩‍🏫", layout="centered")
 
-# Carga de API Key desde Secrets
 api_key_configurada = st.secrets.get("GEMINI_API_KEY", None)
 
 def leer_docx(archivo):
@@ -14,9 +16,32 @@ def leer_docx(archivo):
     return "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
 
 def crear_docx_adaptado(texto_adaptado):
-    doc = docx.Document()
+    # Intentamos abrir la plantilla con logos, si no existe, creamos uno blanco
+    if os.path.exists("plantilla.docx"):
+        doc = docx.Document("plantilla.docx")
+        # Añadimos un salto de página después del encabezado de la plantilla
+        doc.add_page_break()
+    else:
+        doc = docx.Document()
+
+    # Estilo para el título de la prueba
+    titulo = doc.add_paragraph("EVALUACIÓN ADECUADA (PACI)")
+    titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = titulo.runs[0]
+    run.bold = True
+    run.font.size = Pt(14)
+
+    # Procesamos el texto de la IA para aplicar formato básico
     for linea in texto_adaptado.split('\n'):
-        if linea.strip(): doc.add_paragraph(linea.replace('**', ''))
+        if linea.strip():
+            p = doc.add_paragraph()
+            # Si la línea parece un título (ej: Parte I, Instrucciones), la ponemos en negrita
+            if ":" in linea or linea.isupper() or "PARTE" in linea.upper():
+                run = p.add_run(linea.replace('**', ''))
+                run.bold = True
+            else:
+                p.add_run(linea.replace('**', ''))
+    
     archivo_memoria = BytesIO()
     doc.save(archivo_memoria)
     archivo_memoria.seek(0)
@@ -24,25 +49,21 @@ def crear_docx_adaptado(texto_adaptado):
 
 def adaptar_prueba_con_ia(texto_original, curso, asignatura, necesidad, api_key, nombre_modelo):
     genai.configure(api_key=api_key)
-    
-    # Usamos exactamente el modelo que seleccionaste en la pantalla
     modelo = genai.GenerativeModel(nombre_modelo)
     
+    # PROMPT MEJORADO: Le pedimos a la IA que use una estructura clara
     prompt = f"""
-    Actúa como una Educadora Diferencial altamente capacitada, con más de 20 años de experiencia trabajando en el Programa de Integración Escolar (PIE) en Chile y experta en el Decreto 83.
-    
-    Tu tarea es ejecutar una adecuación curricular profunda de la siguiente prueba de {asignatura} para un estudiante de {curso}. 
-    El estudiante presenta la siguiente condición: {necesidad}.
-    
-    Basado en tu vasta trayectoria, aplica estos criterios:
-    1. Graduación de la complejidad: Simplifica el vocabulario sin perder el objetivo pedagógico.
-    2. Adaptación de acceso: Fragmenta instrucciones largas en pasos numerados simples.
-    3. Formato: Prioriza preguntas directas, usa negritas para conceptos clave y elimina distractores.
-    4. Si es TEA: Usa lenguaje literal y evita metáforas. Si es TDAH: Resalta los verbos de las instrucciones.
-    
-    Entrega la prueba completa y lista para copiar a Word. No saludes ni des explicaciones, solo el contenido adaptado.
-    
-    TEXTO ORIGINAL:
+    Actúa como una Educadora Diferencial con 20 años de experiencia en Chile. 
+    Tu misión es realizar la adecuación PACI de esta prueba de {asignatura} para {curso}.
+    Condición del estudiante: {necesidad}.
+
+    INSTRUCCIONES DE FORMATO PARA EL WORD:
+    1. Organiza la prueba en secciones claras (Ej: PARTE I: SELECCIÓN MÚLTIPLE).
+    2. Usa instrucciones cortas y numeradas.
+    3. Asegúrate de que el contenido sea estéticamente ordenado.
+    4. No incluyas comentarios personales, solo la prueba final.
+
+    PRUEBA ORIGINAL:
     {texto_original}
     """
     
@@ -50,49 +71,37 @@ def adaptar_prueba_con_ia(texto_original, curso, asignatura, necesidad, api_key,
     return response.text
 
 # --- INTERFAZ ---
-st.title("👩‍🏫 Generador PACI: Nivel Experto")
-st.markdown("Sube tu prueba y elige el cerebro de la IA.")
+st.title("👩‍🏫 Generador PACI: Formato Profesional")
+st.info("Nota: Para mantener los logos, asegúrate de haber subido 'plantilla.docx' a tu GitHub.")
 
 with st.sidebar:
     st.header("⚙️ Configuración")
-    
-    # Validamos la API KEY primero
-    final_api_key = api_key_configurada if api_key_configurada else st.text_input("Ingresa API Key:", type="password")
+    final_api_key = api_key_configurada if api_key_configurada else st.text_input("API Key:", type="password")
     modelo_seleccionado = None
     
-    # Si hay clave, buscamos los modelos reales
     if final_api_key:
-        st.success("✅ Llave Conectada")
         try:
             genai.configure(api_key=final_api_key)
-            # Le preguntamos a Google: "¿Qué modelos tienes para leer texto?"
-            lista_modelos = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            
-            # Limpiamos modelos que dan error (como los viejos de vision)
-            modelos_limpios = [m for m in lista_modelos if "vision" not in m]
-            
+            modelos = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            modelos_limpios = [m for m in modelos if "vision" not in m]
             if modelos_limpios:
-                # Mostramos un menú desplegable para que tú elijas
-                modelo_seleccionado = st.selectbox("🧠 Elige el Cerebro IA:", modelos_limpios)
-        except Exception as e:
-            st.error("Error conectando con Google. Revisa tu API Key.")
+                modelo_seleccionado = st.selectbox("🧠 Cerebro IA:", modelos_limpios)
+        except:
+            st.error("Error de conexión.")
     
     st.divider()
-    curso_sel = st.selectbox("Curso:", ["1ro Básico", "2do Básico", "3ro Básico", "4to Básico", "5to Básico", "6to Básico", "7mo Básico", "8vo Básico", "1ro Medio", "2do Medio", "3ro Medio", "4to Medio"])
-    asignatura_sel = st.selectbox("Asignatura:", ["Lenguaje", "Matemáticas", "Historia", "Ciencias", "Inglés"])
+    curso_sel = st.selectbox("Curso:", ["1ro Básico", "2do Básico", "3ro Básico", "4to Básico", "5to Básico", "6to Básico", "7mo Básico", "8vo Básico"])
     necesidad_sel = st.selectbox("Necesidad:", ["TEA", "TDAH", "Trastorno del Lenguaje"])
 
-archivo = st.file_uploader("Sube la prueba (.docx)", type=["docx"])
+archivo = st.file_uploader("Sube la prueba original (.docx)", type=["docx"])
 
-if archivo and st.button("🚀 Ejecutar Adecuación Experta"):
-    if not final_api_key or not modelo_seleccionado:
-        st.error("Falta la API Key o seleccionar el modelo.")
-    else:
-        try:
-            with st.spinner(f"La educadora virtual está procesando con {modelo_seleccionado}..."):
-                texto_paci = adaptar_prueba_con_ia(leer_docx(archivo), curso_sel, asignatura_sel, necesidad_sel, final_api_key, modelo_seleccionado)
-                st.success("✨ ¡Adecuación lista!")
-                st.download_button("⬇️ Descargar Word", data=crear_docx_adaptado(texto_paci), file_name=f"PACI_{asignatura_sel}.docx")
-                with st.expander("Ver vista previa"): st.write(texto_paci)
-        except Exception as e:
-            st.error(f"Error técnico al procesar: {e}")
+if archivo and st.button("🚀 Generar Word Profesional"):
+    if final_api_key and modelo_seleccionado:
+        with st.spinner("La experta está redactando y formateando la prueba..."):
+            try:
+                texto_paci = adaptar_prueba_con_ia(leer_docx(archivo), curso_sel, "Asignatura", necesidad_sel, final_api_key, modelo_seleccionado)
+                archivo_word = crear_docx_adaptado(texto_paci)
+                st.success("✨ ¡Documento generado!")
+                st.download_button("⬇️ Descargar Word con Formato", data=archivo_word, file_name=f"Prueba_PACI_{curso_sel}.docx")
+            except Exception as e:
+                st.error(f"Error: {e}")
